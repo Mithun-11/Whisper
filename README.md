@@ -1,69 +1,98 @@
-# Whisper Local (Windows)
+# 🎤 Whisper Desktop Transcription
 
-Local speech-to-text stack:
-- FastAPI backend using `faster-whisper` on CUDA
-- Electron + React desktop UI in `whisper-panda/`
+> **High-performance, fully local speech-to-text for Windows**
 
-## Project Structure
+A GPU-accelerated desktop application that combines a Python transcription engine with a modern Electron interface—delivering fast, private transcription without cloud dependencies.
 
-- `main.py`: FastAPI transcription server
-- `whisper-panda/`: Electron frontend app
+---
 
-## Prerequisites
+## ✨ Highlights
+
+- 🔒 **Fully Local** — All inference runs on your machine
+- ⚡ **GPU Accelerated** — CUDA-optimized for fast transcription
+- 🎯 **Low Latency** — FastAPI backend with warm model loading
+- 🖥️ **Modern UI** — Electron + React desktop experience
+- 🎙️ **Smart Processing** — Voice activity detection reduces noise & hallucinations
+
+---
+
+## 🏗️ Architecture
+
+Two complementary layers working in harmony:
+
+**Backend** (`main.py`)
+- FastAPI transcription service
+- `faster-whisper` running on CUDA
+- Persistent model in VRAM for responsive requests
+
+**Desktop App** (`whisper-panda/`)
+- Electron desktop shell
+- React-based user interface
+- Native IPC to local API
+
+---
+
+## 🛠️ Technology Stack
+
+| Component | Stack |
+|-----------|-------|
+| **Backend** | Python, FastAPI, faster-whisper |
+| **Frontend** | Electron, React, Vite |
+| **GPU** | CUDA/cuDNN runtime libraries |
+
+---
+
+## 📋 Requirements
 
 - Windows
 - Python 3.10+
 - Node.js 18+
-- NVIDIA GPU with CUDA support (for `device="cuda"`)
+- NVIDIA GPU with CUDA support
 
-## 1. Python Setup (Backend)
+---
 
-Create and activate a virtual environment:
+## 📦 CUDA/cuDNN Runtime Libraries
+
+CUDA/cuDNN DLLs are required at runtime (not included in repo).
+
+**Reference library source:**
+- https://github.com/Purfview/whisper-standalone-win/releases/tag/libs
+
+Place required DLLs in the project runtime path for the backend to access.
+
+---
+
+## 🧠 Model Configuration
+
+**Framework reference:**
+- https://github.com/SYSTRAN/faster-whisper
+
+**Current backend settings:**
+
+| Setting | Value |
+|---------|-------|
+| Model | `large-v3` |
+| Device | `cuda` |
+| Compute Type | `int8_float16` |
+
+*Model downloads automatically on first run if not cached.*
+
+---
+
+## 🚀 Local Development
+
+### Backend Setup
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-Install dependencies:
-
-```powershell
 pip install fastapi uvicorn python-multipart faster-whisper
-```
-
-## 2. CUDA/cuDNN DLL Setup (Local)
-
-This project expects CUDA/cuDNN runtime DLLs to be available from the project root path (`D:\Whisper` in current code).
-
-DLL source link you shared:
-- https://github.com/Purfview/whisper-standalone-win/releases/tag/libs
-
-Place the required DLLs (such as `cublas*.dll` and `cudnn*.dll`) in the project root so `main.py` can load them.
-
-## 3. Whisper Model Installation
-
-Follow the model guidance from:
-- https://github.com/SYSTRAN/faster-whisper
-
-Current backend uses:
-- model name: `large-v3`
-- device: `cuda`
-- compute type: `int8_float16`
-
-On first run, `faster-whisper` will download model files automatically if not already cached.
-
-## 4. Run Backend
-
-From project root:
-
-```powershell
 python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Health check:
-- `GET http://127.0.0.1:8000/health`
+**Health check:** http://127.0.0.1:8000/health
 
-## 5. Electron Frontend Setup
+### Desktop App Setup
 
 ```powershell
 cd whisper-panda
@@ -71,25 +100,8 @@ npm install
 npm run dev
 ```
 
-## 6. Local Git Init
+---
 
-From project root:
+## 🎯 Mission
 
-```powershell
-git init
-git add .
-git commit -m "Initial local commit"
-git branch -M main
-```
-
-If you later connect GitHub remote:
-
-```powershell
-git remote add origin <your-repo-url>
-git push -u origin main
-```
-
-## Notes
-
-- `.gitignore` is configured at root for Python, Node/Electron, caches, and local media/runtime files.
-- CUDA DLLs are currently optional in `.gitignore` (commented out). Uncomment those lines if you do not want DLLs tracked.
+Deliver **production-quality** local transcription with exceptional accuracy, rapid turnaround, and absolute data privacy for desktop users.
