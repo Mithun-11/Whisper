@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+
+# Node / Electron
+node_modules/
+whisper-panda/node_modules/
+whisper-panda/dist/
+whisper-panda/out/
+whisper-panda/.eslintcache
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Local runtime/generated files
+*.tmp
+*.wav
+*.m4a
+*.mp3
+
+# Local CUDA/cuDNN DLLs
+cublas64_12.dll
+cublasLt64_12.dll
+cudnn64_9.dll
+cudnn_adv64_9.dll
+cudnn_cnn64_9.dll
+cudnn_engines_precompiled64_9.dll
+cudnn_engines_runtime_compiled64_9.dll
+cudnn_graph64_9.dll
+cudnn_heuristic64_9.dll
+cudnn_ops64_9.dll
