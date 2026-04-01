@@ -60,10 +60,17 @@ function App() {
           const formData = new FormData()
           formData.append('file', audioBlob, 'record.webm')
 
+          // If request takes >5s the model is likely reloading from idle-unload
+          const loadingTimer = setTimeout(() => {
+            window.api.showOverlay('loading')
+          }, 5000)
+
           try {
             const response = await axios.post('http://127.0.0.1:8000/transcribe', formData, {
-              headers: { 'Content-Type': 'multipart/form-data' }
+              headers: { 'Content-Type': 'multipart/form-data' },
+              timeout: 300000 // 5 min max — model reload can take ~60s
             })
+            clearTimeout(loadingTimer)
 
             const text = response.data.text
             if (text) {
@@ -74,6 +81,7 @@ function App() {
             setStatus('ready')
             window.api.hideOverlay()
           } catch (error) {
+            clearTimeout(loadingTimer)
             console.error('Transcription failed:', error)
             setStatus('error')
             window.api.hideOverlay()

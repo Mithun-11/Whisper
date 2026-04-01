@@ -1,8 +1,9 @@
 import os
-import sys
 import re
+import gc
+import threading
 
-# 1. The Ultimate DLL Override (Must be at the very top!)
+# 1. DLL Override — must be at the very top
 os.environ["PATH"] = r"D:\Whisper" + os.pathsep + os.environ.get("PATH", "")
 os.add_dll_directory(r"D:\Whisper")
 
@@ -14,7 +15,6 @@ import shutil
 
 app = FastAPI()
 
-# 2. Allow Electron to communicate with this API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,20 +23,59 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 3. Load the model globally so it stays "warm" in VRAM
-#    int8_float16 is the fastest compute type for RTX cards — best speed/accuracy tradeoff.
+# ─── Model Management ─────────────────────────────────────────────────
+MODEL_SIZE = "large-v3"
+IDLE_UNLOAD_SECONDS = 30 * 60  # 30 minutes
+
+model = None
+model_lock = threading.Lock()
+idle_timer = None
+
+
+def _do_unload():
+    """Called by the idle timer to free VRAM."""
+    global model
+    with model_lock:
+        if model is not None:
+            print("[Model] Idle timeout reached — unloading from VRAM to free memory.")
+            del model
+            model = None
+            gc.collect()
+            print("[Model] Unloaded. Will reload on next transcription request.")
+
+
+def _reset_idle_timer():
+    """Restart the 30-minute idle countdown."""
+    global idle_timer
+    if idle_timer is not None:
+        idle_timer.cancel()
+    idle_timer = threading.Timer(IDLE_UNLOAD_SECONDS, _do_unload)
+    idle_timer.daemon = True
+    idle_timer.start()
+
+
+def _ensure_model_loaded():
+    """Load model if not in memory. Thread-safe."""
+    global model
+    with model_lock:
+        if model is None:
+            print("[Model] Loading Whisper model into VRAM...")
+            model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="int8_float16")
+            print("[Model] Loaded successfully.")
+    _reset_idle_timer()
+
+
+# Initial load on startup
 print("Loading Whisper model into VRAM...")
-model_size = "large-v3"
-model = WhisperModel(model_size, device="cuda", compute_type="int8_float16")
+_ensure_model_loaded()
 print("Model loaded successfully! Ready for dictation.")
 
-# 4. Personal dictionary — add recurring misspellings here.
-#    Format: "wrong": "correct"
+# ─── Personal Corrections ─────────────────────────────────────────────
+# Add recurring misspellings here: "wrong text": "correct text"
 CORRECTIONS = {
-    # Add your own as you spot them, e.g.:
     # "fast api": "FastAPI",
-    # "java script": "JavaScript",
 }
+
 
 def apply_corrections(text: str) -> str:
     for wrong, correct in CORRECTIONS.items():
@@ -44,51 +83,46 @@ def apply_corrections(text: str) -> str:
     return text
 
 
+# ─── Endpoints ────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "model_loaded": model is not None}
 
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
-    # Save the incoming audio to a temp file
+    # Reload model if idle-unloaded
+    _ensure_model_loaded()
+
     suffix = ".webm" if "webm" in (file.content_type or "") else ".wav"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_audio:
-        shutil.copyfileobj(file.file, temp_audio)
-        temp_audio_path = temp_audio.name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
 
     try:
         segments, info = model.transcribe(
-            temp_audio_path,
+            tmp_path,
             language="en",
             beam_size=5,
-            # Show Whisper the STYLE we want via example text, not instructions.
-            # Good punctuation in the prompt → good punctuation in output.
-            initial_prompt="Well, let me explain. First, we need to consider the options: A, B, and C. "
-                           "It's a straightforward process, isn't it? Yes, absolutely! "
-                           "The API response was 200 OK. I'll send an email about it.",
-            # Strict accuracy: always pick the most likely word (no creativity).
+            # Example-style prompt: Whisper mimics style, not instructions
+            initial_prompt=(
+                "Well, let me explain. First, we need to consider the options: A, B, and C. "
+                "It's a straightforward process, isn't it? Yes, absolutely! "
+                "The API response was 200 OK. I'll send an email about it."
+            ),
             temperature=0.0,
-            # For short dictation clips, don't bleed context from the previous recording.
-            # This prevents the famous Whisper hallucination-loop bug.
             condition_on_previous_text=False,
-            # Anti-hallucination guards: cut off if output is suspiciously repetitive
-            # or the model confidence is very low.
             compression_ratio_threshold=2.4,
             log_prob_threshold=-1.0,
             no_speech_threshold=0.6,
-            # VAD: strip leading/trailing silence to prevent empty-clip hallucinations.
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=300),
         )
 
-        full_text = " ".join([segment.text.strip() for segment in segments])
+        full_text = " ".join([s.text.strip() for s in segments])
         full_text = apply_corrections(full_text)
 
-        return {
-            "text": full_text.strip(),
-            "language": info.language,
-        }
+        return {"text": full_text.strip(), "language": info.language}
 
     finally:
-        os.remove(temp_audio_path)
+        os.remove(tmp_path)

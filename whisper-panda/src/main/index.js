@@ -307,6 +307,13 @@ app.whenReady().then(async () => {
   mainWindow.webContents.send('backend-ready')
   tray.setToolTip('WhisperPanda — Ready')
 
+  // Show a brief "Ready" notification via the overlay so the user
+  // knows the app is running even though the window is hidden
+  setTimeout(() => {
+    showOverlay('ready')
+    setTimeout(() => hideOverlay(), 2500)
+  }, 500) // small delay to let overlay window finish loading
+
   // Register saved hotkey
   registerHotkey(settings.hotkey)
 
