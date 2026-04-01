@@ -89,8 +89,16 @@ def health():
     return {"status": "ok", "model_loaded": model is not None}
 
 
+@app.get("/wakeup")
+def wakeup():
+    # Calling this endpoint explicitly starts loading the model into VRAM
+    # in the background while the user is still speaking.
+    _ensure_model_loaded()
+    return {"status": "ok", "model_loaded": True}
+
+
 @app.post("/transcribe")
-async def transcribe_audio(file: UploadFile = File(...)):
+def transcribe_audio(file: UploadFile = File(...)):
     # Reload model if idle-unloaded
     _ensure_model_loaded()
 
@@ -106,9 +114,9 @@ async def transcribe_audio(file: UploadFile = File(...)):
             beam_size=5,
             # Example-style prompt: Whisper mimics style, not instructions
             initial_prompt=(
-                "Well, let me explain. First, we need to consider the options: A, B, and C. "
-                "It's a straightforward process, isn't it? Yes, absolutely! "
-                "The API response was 200 OK. I'll send an email about it."
+                "This is a pristine, professional transcript. It uses proper punctuation, "
+                "correct capitalization, and flawless sentence structure. "
+                "Absolutely no filler words such as um, uh, ah are included."
             ),
             temperature=0.0,
             condition_on_previous_text=False,

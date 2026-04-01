@@ -202,7 +202,8 @@ function createOverlay() {
     focusable: false,
     hasShadow: false,
     skipTaskbar: true,
-    show: false,
+    show: true,
+    opacity: 0,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -222,13 +223,14 @@ function createOverlay() {
 
 function showOverlay(status) {
   if (!overlayWindow) return
-  overlayWindow.show()
+  overlayWindow.setOpacity(1)
+  overlayWindow.setAlwaysOnTop(true, 'pop-up-menu')
   overlayWindow.webContents.send('overlay-status', status)
 }
 
 function hideOverlay() {
   if (!overlayWindow) return
-  overlayWindow.hide()
+  overlayWindow.setOpacity(0)
 }
 
 // ─── System Tray ─────────────────────────────────────────────────────

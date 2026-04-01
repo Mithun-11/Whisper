@@ -16,6 +16,17 @@ function App() {
   const mediaRecorder = useRef(null)
   const audioChunks = useRef([])
   const hotkeyRef = useRef(null)
+  const statusRef = useRef(status)
+  const isRecordingRef = useRef(isRecording)
+
+  // Keep refs up to date
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording
+  }, [isRecording])
 
   // Load saved settings on mount
   useEffect(() => {
@@ -33,6 +44,9 @@ function App() {
   useEffect(() => {
     window.api.onToggleRecord(() => {
       if (!backendReady) return
+      // Ignore hotkey triggers if we are busy processing a previous transcription
+      if (statusRef.current === 'processing') return
+
       setIsRecording((prev) => !prev)
     })
   }, [backendReady])
@@ -44,6 +58,18 @@ function App() {
       window.api.showOverlay('recording')
 
       navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        // RACE CONDITION Check: Wait, if the user pressed hotkey to stop again BEFORE we even got mic permissions:
+        if (!isRecordingRef.current) {
+          // Immediately kill the stream and abort
+          stream.getTracks().forEach((track) => track.stop())
+          setStatus('ready')
+          window.api.hideOverlay()
+          return
+        }
+
+        // Wake up model proactively in the background
+        axios.get('http://127.0.0.1:8000/wakeup').catch((err) => console.error('Wakeup failed:', err))
+
         mediaRecorder.current = new MediaRecorder(stream)
         audioChunks.current = []
 
@@ -60,17 +86,11 @@ function App() {
           const formData = new FormData()
           formData.append('file', audioBlob, 'record.webm')
 
-          // If request takes >5s the model is likely reloading from idle-unload
-          const loadingTimer = setTimeout(() => {
-            window.api.showOverlay('loading')
-          }, 5000)
-
           try {
             const response = await axios.post('http://127.0.0.1:8000/transcribe', formData, {
               headers: { 'Content-Type': 'multipart/form-data' },
               timeout: 300000 // 5 min max — model reload can take ~60s
             })
-            clearTimeout(loadingTimer)
 
             const text = response.data.text
             if (text) {
@@ -81,7 +101,6 @@ function App() {
             setStatus('ready')
             window.api.hideOverlay()
           } catch (error) {
-            clearTimeout(loadingTimer)
             console.error('Transcription failed:', error)
             setStatus('error')
             window.api.hideOverlay()
