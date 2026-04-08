@@ -272,6 +272,32 @@
         .pill.loading .sub   { color: rgba(200, 150, 40, 0.45); }
         .pill.loading .divider { background: #c8962a; }
 
+        /* ── NO MIC ── */
+        .pill.no-mic {
+            background: rgba(22, 12, 2, 0.88);
+            border: 1px solid rgba(230, 120, 40, 0.34);
+            box-shadow:
+                0 8px 32px rgba(190, 100, 24, 0.22),
+                inset 0 1px 0 rgba(255, 160, 80, 0.08);
+        }
+
+        .pill.no-mic .label { color: #ffa255; }
+        .pill.no-mic .sub   { color: rgba(255, 170, 96, 0.55); }
+        .pill.no-mic .divider { background: #ff9b45; }
+
+        /* ── MIC DENIED ── */
+        .pill.mic-denied {
+            background: rgba(20, 4, 8, 0.88);
+            border: 1px solid rgba(230, 80, 120, 0.34);
+            box-shadow:
+                0 8px 32px rgba(180, 30, 70, 0.22),
+                inset 0 1px 0 rgba(255, 120, 150, 0.08);
+        }
+
+        .pill.mic-denied .label { color: #ff6d93; }
+        .pill.mic-denied .sub   { color: rgba(255, 132, 165, 0.58); }
+        .pill.mic-denied .divider { background: #ff5e8a; }
+
         /* ── Text ── */
         .text {
             display: flex;
@@ -381,6 +407,20 @@
                 check.style.display = 'none'
                 label.textContent   = 'Loading'
                 sub.textContent     = 'Reloading model…'
+            } else if (status === 'no-mic') {
+                pill.className = 'pill no-mic'
+                wave.style.display  = 'none'
+                arc.style.display   = 'none'
+                check.style.display = 'none'
+                label.textContent   = 'No mic connected'
+                sub.textContent     = 'Connect a microphone'
+            } else if (status === 'mic-denied') {
+                pill.className = 'pill mic-denied'
+                wave.style.display  = 'none'
+                arc.style.display   = 'none'
+                check.style.display = 'none'
+                label.textContent   = 'Microphone blocked'
+                sub.textContent     = 'Allow mic permission'
             } else {
                 pill.className = 'pill transcribing'
                 wave.style.display  = 'none'

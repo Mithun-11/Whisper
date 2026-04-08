@@ -14,10 +14,12 @@ function App() {
   const [pendingKeys, setPendingKeys] = useState(null)
   const [copiedId, setCopiedId] = useState(null)
   const mediaRecorder = useRef(null)
+  const currentStream = useRef(null)
   const audioChunks = useRef([])
   const hotkeyRef = useRef(null)
   const statusRef = useRef(status)
   const isRecordingRef = useRef(isRecording)
+  const activeSessionIdRef = useRef(0)
 
   // Keep refs up to date
   useEffect(() => {
@@ -40,85 +42,161 @@ function App() {
     window.api.onHotkeyChanged((raw) => setHotkey(formatHotkey(raw)))
   }, [])
 
+  async function startRecording() {
+    if (!backendReady) return
+    if (statusRef.current === 'processing') {
+      window.api.showOverlay('processing')
+      setTimeout(() => window.api.hideOverlay(), 800)
+      return
+    }
+    if (isRecordingRef.current) return
+
+    const sessionId = activeSessionIdRef.current + 1
+    activeSessionIdRef.current = sessionId
+
+    setIsRecording(true)
+    setStatus('recording')
+    window.api.showOverlay('recording')
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+      // Session changed or user stopped before mic became available.
+      if (!isRecordingRef.current || activeSessionIdRef.current !== sessionId) {
+        stream.getTracks().forEach((track) => track.stop())
+        return
+      }
+
+      currentStream.current = stream
+
+      // Wake up model proactively in the background while user is speaking.
+      axios.get('http://127.0.0.1:8000/wakeup').catch((err) => console.error('Wakeup failed:', err))
+
+      const recorder = new MediaRecorder(stream)
+      mediaRecorder.current = recorder
+      audioChunks.current = []
+
+      recorder.ondataavailable = (e) => {
+        if (activeSessionIdRef.current !== sessionId) return
+        audioChunks.current.push(e.data)
+      }
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop())
+        if (currentStream.current === stream) currentStream.current = null
+
+        // Ignore stale callbacks from a previous session.
+        if (activeSessionIdRef.current !== sessionId) return
+
+        setStatus('processing')
+        window.api.showOverlay('processing')
+
+        const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
+        const formData = new FormData()
+        formData.append('file', audioBlob, 'record.webm')
+
+        try {
+          const response = await axios.post('http://127.0.0.1:8000/transcribe', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 300000 // 5 min max — model reload can take ~60s
+          })
+
+          // Ignore stale completion after a newer session has started.
+          if (activeSessionIdRef.current !== sessionId) return
+
+          const text = response.data.text
+          if (text) {
+            const entry = { text, id: Date.now() }
+            setHistory((prev) => [entry, ...prev].slice(0, MAX_HISTORY))
+            window.api.typeText(text)
+          }
+
+          setStatus('ready')
+          window.api.hideOverlay()
+        } catch (error) {
+          if (activeSessionIdRef.current !== sessionId) return
+          console.error('Transcription failed:', error)
+          setStatus('error')
+          window.api.hideOverlay()
+          setTimeout(() => {
+            if (activeSessionIdRef.current === sessionId) setStatus('ready')
+          }, 3000)
+        }
+      }
+
+      recorder.start()
+    } catch (err) {
+      if (activeSessionIdRef.current !== sessionId) return
+
+      console.error('Microphone access failed:', err)
+      setIsRecording(false)
+      setStatus('ready')
+
+      const errorName = err?.name
+      if (errorName === 'NotFoundError' || errorName === 'DevicesNotFoundError') {
+        window.api.showOverlay('no-mic')
+        setTimeout(() => window.api.hideOverlay(), 2200)
+        return
+      }
+
+      if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError' || errorName === 'SecurityError') {
+        window.api.showOverlay('mic-denied')
+        setTimeout(() => window.api.hideOverlay(), 2400)
+        return
+      }
+
+      window.api.hideOverlay()
+    }
+  }
+
+  function stopRecording() {
+    if (!isRecordingRef.current) return
+
+    setIsRecording(false)
+
+    // Stopping before recorder is constructed (permission delay/race).
+    if (!mediaRecorder.current) {
+      setStatus('ready')
+      window.api.hideOverlay()
+      if (currentStream.current) {
+        currentStream.current.getTracks().forEach((track) => track.stop())
+        currentStream.current = null
+      }
+      return
+    }
+
+    if (mediaRecorder.current.state === 'recording') {
+      mediaRecorder.current.stop()
+      return
+    }
+
+    setStatus('ready')
+    window.api.hideOverlay()
+  }
+
   // Listen for global hotkey trigger
   useEffect(() => {
     window.api.onToggleRecord(() => {
-      if (!backendReady) return
-      // Ignore hotkey triggers if we are busy processing a previous transcription
-      if (statusRef.current === 'processing') return
-
-      setIsRecording((prev) => !prev)
+      if (isRecordingRef.current) {
+        stopRecording()
+      } else {
+        startRecording()
+      }
     })
   }, [backendReady])
 
-  // Microphone lifecycle
+  // Cleanup recording resources on unmount
   useEffect(() => {
-    if (isRecording) {
-      setStatus('recording')
-      window.api.showOverlay('recording')
-
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-        // RACE CONDITION Check: Wait, if the user pressed hotkey to stop again BEFORE we even got mic permissions:
-        if (!isRecordingRef.current) {
-          // Immediately kill the stream and abort
-          stream.getTracks().forEach((track) => track.stop())
-          setStatus('ready')
-          window.api.hideOverlay()
-          return
-        }
-
-        // Wake up model proactively in the background
-        axios.get('http://127.0.0.1:8000/wakeup').catch((err) => console.error('Wakeup failed:', err))
-
-        mediaRecorder.current = new MediaRecorder(stream)
-        audioChunks.current = []
-
-        mediaRecorder.current.ondataavailable = (e) => {
-          audioChunks.current.push(e.data)
-        }
-
-        mediaRecorder.current.onstop = async () => {
-          stream.getTracks().forEach((track) => track.stop())
-          setStatus('processing')
-          window.api.showOverlay('processing')
-
-          const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
-          const formData = new FormData()
-          formData.append('file', audioBlob, 'record.webm')
-
-          try {
-            const response = await axios.post('http://127.0.0.1:8000/transcribe', formData, {
-              headers: { 'Content-Type': 'multipart/form-data' },
-              timeout: 300000 // 5 min max — model reload can take ~60s
-            })
-
-            const text = response.data.text
-            if (text) {
-              const entry = { text, id: Date.now() }
-              setHistory((prev) => [entry, ...prev].slice(0, MAX_HISTORY))
-              window.api.typeText(text)
-            }
-            setStatus('ready')
-            window.api.hideOverlay()
-          } catch (error) {
-            console.error('Transcription failed:', error)
-            setStatus('error')
-            window.api.hideOverlay()
-            setTimeout(() => setStatus('ready'), 3000)
-          }
-        }
-
-        mediaRecorder.current.start()
-      }).catch((err) => {
-        console.error('Microphone access denied:', err)
-        setStatus('ready')
-      })
-    } else {
+    return () => {
       if (mediaRecorder.current && mediaRecorder.current.state === 'recording') {
         mediaRecorder.current.stop()
       }
+      if (currentStream.current) {
+        currentStream.current.getTracks().forEach((track) => track.stop())
+        currentStream.current = null
+      }
     }
-  }, [isRecording])
+  }, [])
 
   // Convert Electron accelerator format to user-friendly display
   function formatHotkey(raw = '') {
@@ -207,7 +285,14 @@ function App() {
       <div className="orb-wrap">
         <div
           className={`orb ${status} ${backendReady && status !== 'processing' ? 'clickable' : ''}`}
-          onClick={() => { if (backendReady && status !== 'processing') setIsRecording(r => !r) }}
+          onClick={() => {
+            if (!backendReady || status === 'processing') return
+            if (isRecordingRef.current) {
+              stopRecording()
+            } else {
+              startRecording()
+            }
+          }}
           title={backendReady ? (isRecording ? 'Stop recording' : 'Start recording') : ''}
         >
           <div className="orb-ring" />
