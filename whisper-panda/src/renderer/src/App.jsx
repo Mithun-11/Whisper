@@ -42,6 +42,13 @@ function App() {
     window.api.onHotkeyChanged((raw) => setHotkey(formatHotkey(raw)))
   }, [])
 
+  // Focus the hotkey capture div when entering edit mode
+  useEffect(() => {
+    if (editingHotkey && hotkeyRef.current) {
+      hotkeyRef.current.focus()
+    }
+  }, [editingHotkey])
+
   async function startRecording() {
     if (!backendReady) return
     if (statusRef.current === 'processing') {
@@ -109,6 +116,10 @@ function App() {
             const entry = { text, id: Date.now() }
             setHistory((prev) => [entry, ...prev].slice(0, MAX_HISTORY))
             window.api.typeText(text)
+          } else {
+            // No speech detected — give feedback instead of silent nothing
+            window.api.showOverlay('no-speech')
+            setTimeout(() => window.api.hideOverlay(), 2000)
           }
 
           setStatus('ready')

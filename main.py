@@ -102,13 +102,17 @@ def transcribe_audio(file: UploadFile = File(...)):
     # Reload model if idle-unloaded
     _ensure_model_loaded()
 
+    # Hold a local reference so the idle timer can't delete the model mid-transcription
+    with model_lock:
+        current_model = model
+
     suffix = ".webm" if "webm" in (file.content_type or "") else ".wav"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
 
     try:
-        segments, info = model.transcribe(
+        segments, info = current_model.transcribe(
             tmp_path,
             language="en",
             beam_size=5,

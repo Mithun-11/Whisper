@@ -223,9 +223,13 @@ function createOverlay() {
 
 function showOverlay(status) {
   if (!overlayWindow) return
-  overlayWindow.setOpacity(1)
-  overlayWindow.setAlwaysOnTop(true, 'pop-up-menu')
+  // Send the status update FIRST so the renderer paints the new state
+  // before the window becomes visible — prevents stale-frame flicker
   overlayWindow.webContents.send('overlay-status', status)
+  overlayWindow.setAlwaysOnTop(true, 'pop-up-menu')
+  setTimeout(() => {
+    if (overlayWindow) overlayWindow.setOpacity(1)
+  }, 50)
 }
 
 function hideOverlay() {
@@ -304,7 +308,16 @@ app.whenReady().then(async () => {
   createOverlay()
 
   startBackend()
-  await waitForBackend()
+
+  // Wait for both the backend AND the renderer to be ready before sending signals
+  const [backendDone, rendererDone] = [waitForBackend(), new Promise((resolve) => {
+    if (mainWindow.webContents.isLoading()) {
+      mainWindow.webContents.once('did-finish-load', resolve)
+    } else {
+      resolve()
+    }
+  })]
+  await Promise.all([backendDone, rendererDone])
 
   mainWindow.webContents.send('backend-ready')
   tray.setToolTip('WhisperPanda — Ready')

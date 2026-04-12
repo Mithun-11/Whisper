@@ -421,6 +421,13 @@
                 check.style.display = 'none'
                 label.textContent   = 'Microphone blocked'
                 sub.textContent     = 'Allow mic permission'
+            } else if (status === 'no-speech') {
+                pill.className = 'pill no-mic'
+                wave.style.display  = 'none'
+                arc.style.display   = 'none'
+                check.style.display = 'none'
+                label.textContent   = 'No speech detected'
+                sub.textContent     = 'Try again'
             } else {
                 pill.className = 'pill transcribing'
                 wave.style.display  = 'none'
