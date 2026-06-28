@@ -202,8 +202,12 @@ function createOverlay() {
     focusable: false,
     hasShadow: false,
     skipTaskbar: true,
-    show: true,
-    opacity: 0,
+    // Start hidden as a REAL hidden window. We use showInactive()/hide() (not
+    // opacity or DOM tricks) so the OS compositor reliably repaints — a
+    // transparent window left "shown" doesn't always re-present its surface,
+    // which made the pill silently disappear mid-recording.
+    show: false,
+    opacity: 1,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -221,20 +225,22 @@ function createOverlay() {
   }
 }
 
+// Set the pill content first, then physically show the window. showInactive()
+// reveals it WITHOUT stealing focus from the app you're dictating into, and a
+// real show/hide guarantees the window is actually painted — so the pill stays
+// visible for the entire time it's meant to, instead of vanishing mid-recording.
 function showOverlay(status) {
   if (!overlayWindow) return
-  // Send the status update FIRST so the renderer paints the new state
-  // before the window becomes visible — prevents stale-frame flicker
-  overlayWindow.webContents.send('overlay-status', status)
-  overlayWindow.setAlwaysOnTop(true, 'pop-up-menu')
-  setTimeout(() => {
-    if (overlayWindow) overlayWindow.setOpacity(1)
-  }, 50)
+  overlayWindow.webContents.send('overlay-status', { status, visible: true })
+  // 'screen-saver' is the highest level — keeps the pill above fullscreen apps.
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+  if (!overlayWindow.isVisible()) overlayWindow.showInactive()
 }
 
 function hideOverlay() {
   if (!overlayWindow) return
-  overlayWindow.setOpacity(0)
+  overlayWindow.webContents.send('overlay-status', { visible: false })
+  overlayWindow.hide()
 }
 
 // ─── System Tray ─────────────────────────────────────────────────────

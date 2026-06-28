@@ -123,12 +123,17 @@ def transcribe_audio(file: UploadFile = File(...)):
                 "Absolutely no filler words such as um, uh, ah are included."
             ),
             temperature=0.0,
-            condition_on_previous_text=False,
+            # Let each VAD segment be punctuated with knowledge of the previous one.
+            # If long dictations ever show repetition loops, set this back to False.
+            condition_on_previous_text=True,
             compression_ratio_threshold=2.4,
             log_prob_threshold=-1.0,
             no_speech_threshold=0.6,
             vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=300),
+            # Relaxed VAD: don't split on short mid-sentence pauses (300ms was too
+            # aggressive and handed Whisper sentence fragments → bad punctuation).
+            # Longer min-silence + edge padding keeps sentences contiguous.
+            vad_parameters=dict(min_silence_duration_ms=500, speech_pad_ms=400),
         )
 
         full_text = " ".join([s.text.strip() for s in segments])
