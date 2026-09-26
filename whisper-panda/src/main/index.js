@@ -6,6 +6,7 @@ import { spawn } from 'child_process'
 import path from 'path'
 import http from 'http'
 import fs from 'fs'
+import { BACKEND_PORT, BACKEND_URL } from '../shared/backend'
 
 // Speed up the automatic typing so it feels instant
 keyboard.config.autoDelayMs = 0
@@ -60,7 +61,7 @@ function startBackend() {
   const whisperDir = 'D:\\Whisper'
   const pythonPath = path.join(whisperDir, '.venv', 'Scripts', 'python.exe')
 
-  backendProcess = spawn(pythonPath, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000'], {
+  backendProcess = spawn(pythonPath, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(BACKEND_PORT)], {
     cwd: whisperDir,
     env: {
       ...process.env,
@@ -92,13 +93,28 @@ function startBackend() {
 function waitForBackend() {
   return new Promise((resolve) => {
     const check = () => {
-      http.get('http://127.0.0.1:8000/health', (res) => {
-        if (res.statusCode === 200) {
-          console.log('[Backend] Model loaded and ready!')
-          resolve()
-        } else {
-          setTimeout(check, 1500)
-        }
+      http.get(`${BACKEND_URL}/health`, (res) => {
+        let body = ''
+        res.on('data', (chunk) => (body += chunk))
+        res.on('end', () => {
+          // Only trust a response that identifies itself as our backend, so some
+          // other server squatting on the port is never mistaken for it.
+          let isOurs = false
+          try {
+            isOurs = res.statusCode === 200 && JSON.parse(body).app === 'whisperpanda'
+          } catch {
+            isOurs = false
+          }
+          if (isOurs) {
+            console.log('[Backend] Model loaded and ready!')
+            resolve()
+          } else {
+            if (res.statusCode === 200) {
+              console.log(`[Backend] Port ${BACKEND_PORT} is answered by something else — waiting...`)
+            }
+            setTimeout(check, 1500)
+          }
+        })
       }).on('error', () => {
         setTimeout(check, 1500)
       })

@@ -87,10 +87,10 @@ The model is downloaded automatically on first run if not already cached.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install fastapi uvicorn python-multipart faster-whisper
-python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn main:app --host 127.0.0.1 --port 47821 --reload
 ```
 
-Health check endpoint: `http://127.0.0.1:8000/health`
+Health check endpoint: `http://127.0.0.1:47821/health`
 
 ### Desktop App Setup
 

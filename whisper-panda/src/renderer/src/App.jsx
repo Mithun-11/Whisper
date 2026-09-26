@@ -77,7 +77,7 @@ function App() {
       currentStream.current = stream
 
       // Wake up model proactively in the background while user is speaking.
-      axios.get('http://127.0.0.1:8000/wakeup').catch((err) => console.error('Wakeup failed:', err))
+      axios.get(`${window.api.backendUrl}/wakeup`).catch((err) => console.error('Wakeup failed:', err))
 
       const recorder = new MediaRecorder(stream)
       mediaRecorder.current = recorder
@@ -103,7 +103,7 @@ function App() {
         formData.append('file', audioBlob, 'record.webm')
 
         try {
-          const response = await axios.post('http://127.0.0.1:8000/transcribe', formData, {
+          const response = await axios.post(`${window.api.backendUrl}/transcribe`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
             timeout: 300000 // 5 min max — model reload can take ~60s
           })

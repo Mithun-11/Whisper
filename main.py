@@ -86,7 +86,8 @@ def apply_corrections(text: str) -> str:
 # ─── Endpoints ────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_loaded": model is not None}
+    # "app" lets the Electron side verify it's talking to WhisperPanda, not another server.
+    return {"app": "whisperpanda", "status": "ok", "model_loaded": model is not None}
 
 
 @app.get("/wakeup")

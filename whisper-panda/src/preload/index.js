@@ -1,7 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { BACKEND_URL } from '../shared/backend'
 
 if (process.contextIsolated) {
   contextBridge.exposeInMainWorld('api', {
+    backendUrl: BACKEND_URL,
+
     // Recording toggle from global hotkey
     onToggleRecord: (callback) => {
       ipcRenderer.removeAllListeners('toggle-record')
